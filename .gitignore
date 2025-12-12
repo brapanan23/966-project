@@ -8,3 +8,5 @@ __pycache__/
 *.pyzw
 *.pyzwz
 .DS_Store
+raw_data/
+mnist_data/
