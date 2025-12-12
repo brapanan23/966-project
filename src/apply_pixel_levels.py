@@ -1,4 +1,9 @@
 import torch
+import sys
+from pathlib import Path
+# Add src directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+
 from get_mnist import get_mnist_raw
 from torchvision import transforms
 import torch.nn as nn
