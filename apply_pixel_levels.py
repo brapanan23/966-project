@@ -8,17 +8,12 @@ import numpy as np
 
 class Pixelate(nn.Module):
     def __init__(self, downscale_factor=4.0):
-        """
-        downscale_factor can be float — e.g., 2.5, 3.7, 5.2
-        Larger = more pixelated.
-        """
+
         super().__init__()
         self.downscale_factor = float(downscale_factor)
 
     def forward(self, img):
-        """
-        img: (C, H, W) float tensor
-        """
+
         C, H, W = img.shape
         
         h_small = max(1, int(round(H / self.downscale_factor)))
