@@ -2,7 +2,9 @@
 import os
 import csv
 import re
-from PIL import Image
+from PIL import Image, ImageTk
+import tkinter as tk
+from tkinter import messagebox
 
 def parse_pixelation_level(filename):
 
@@ -42,12 +44,109 @@ def get_pixelation_files(img_dir):
     files.sort(key=lambda x: x[0], reverse=True)
     return files
 
-def display_image(image_path, pixelation_level, image_idx):
-
+def show_image_gui(image_path, image_idx, level_num, total_levels, has_next_level):
+    """
+    Display image in a GUI window with keyboard-only input.
+    Returns: 'guess' with digit (0-9), 'next', or 'quit'
+    
+    Args:
+        image_path: Path to the image file
+        image_idx: Image index number
+        level_num: Current level number (1 = most pixelated, total_levels = least pixelated)
+        total_levels: Total number of pixelation levels
+        has_next_level: Whether there's a next (less pixelated) level available
+    """
+    result = {'action': None, 'guess': None}
+    
+    root = tk.Tk()
+    root.title(f"MNIST Experiment - Image {image_idx:03d}")
+    root.resizable(False, False)
+    
+    # Make window focusable for keyboard input
+    root.focus_set()
+    root.focus_force()
+    
+    # Load and resize image
     img = Image.open(image_path)
-    img_large = img.resize((img.width * 8, img.height * 8), Image.NEAREST)
-    img_large.show()
-    print(f"\nImage {image_idx:03d} | Pixelation Level: {pixelation_level}")
+    img_large = img.resize((img.width * 12, img.height * 12), Image.NEAREST)
+    photo = ImageTk.PhotoImage(img_large)
+    
+    # Create main frame
+    main_frame = tk.Frame(root, padx=40, pady=30)
+    main_frame.pack()
+    
+    # Title
+    title_label = tk.Label(main_frame, text=f"Image {image_idx:03d} | Level {level_num} of {total_levels}", 
+                           font=('Arial', 18, 'bold'))
+    title_label.pack(pady=(0, 20))
+    
+    # Image display
+    image_label = tk.Label(main_frame, image=photo)
+    image_label.pack(pady=20)
+    
+    # Instructions - more prominent
+    instruction_lines = []
+    instruction_lines.append("Press a digit key (0-9) to guess")
+    if has_next_level:
+        instruction_lines.append(f"Press 'n' for next level (Level {level_num + 1} of {total_levels})")
+    else:
+        instruction_lines.append(f"(This is Level {level_num} - the least pixelated)")
+    instruction_lines.append("Press 'q' to quit")
+    
+    for i, line in enumerate(instruction_lines):
+        instruction_label = tk.Label(main_frame, text=line, font=('Arial', 14))
+        if i == 0:
+            instruction_label.pack(pady=(20, 8))
+        else:
+            instruction_label.pack(pady=4)
+    
+    # Keyboard shortcuts
+    def on_key_press(event):
+        key = event.char.lower()
+        if key.isdigit() and 0 <= int(key) <= 9:
+            on_guess(int(key), root, result)
+        elif key == 'n' and has_next_level:
+            on_next(root, result)
+        elif key == 'q':
+            on_quit(root, result)
+    
+    root.bind('<Key>', on_key_press)
+    
+    # Keep reference to photo to prevent garbage collection
+    image_label.image = photo
+    
+    # Center window on screen
+    root.update_idletasks()
+    width = root.winfo_width()
+    height = root.winfo_height()
+    x = (root.winfo_screenwidth() // 2) - (width // 2)
+    y = (root.winfo_screenheight() // 2) - (height // 2)
+    root.geometry(f'{width}x{height}+{x}+{y}')
+    
+    # Wait for user action
+    root.mainloop()
+    
+    return result['action'], result['guess']
+
+def on_guess(digit, root, result):
+    """Handle digit guess"""
+    result['action'] = 'guess'
+    result['guess'] = digit
+    root.quit()
+    root.destroy()
+
+def on_next(root, result):
+    """Handle next level"""
+    result['action'] = 'next'
+    root.quit()
+    root.destroy()
+
+def on_quit(root, result):
+    """Handle quit"""
+    if messagebox.askyesno("Quit", "Are you sure you want to quit the experiment?"):
+        result['action'] = 'quit'
+        root.quit()
+        root.destroy()
 
 def get_user_name():
 
@@ -70,20 +169,42 @@ def run_experiment(pixelated_dir='pixelated_mnist', user_name=None,
     os.makedirs(user_data_dir, exist_ok=True)
     output_csv = os.path.join(user_data_dir, 'results.csv')
     
-    print(f"\nResults will be saved to: {output_csv}\n")
+    csv_exists = os.path.exists(output_csv)
+    
+    # Load existing results to determine completed images
+    completed_images = set()
+    if csv_exists:
+        with open(output_csv, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                try:
+                    img_idx_str = row.get('image_idx', '').strip()
+                    # Skip header row or empty rows
+                    if not img_idx_str or img_idx_str == 'image_idx' or not img_idx_str.isdigit():
+                        continue
+                    img_idx = int(img_idx_str)
+                    action = row.get('action_taken', '').strip()
+                    # Only mark as completed if user made a guess or reached lowest level without guessing
+                    if action in ['guess', 'no_guess']:
+                        completed_images.add(img_idx)
+                except (ValueError, KeyError) as e:
+                    # Skip malformed rows
+                    continue
+    
+    # Auto-enable resume if there are completed images (unless explicitly disabled)
+    if csv_exists and completed_images and not resume:
+        resume = True
+        print(f"\nFound existing results file with {len(completed_images)} completed images.")
+        print("Resuming from where you left off.\n")
+    
+    print(f"Results will be saved to: {output_csv}\n")
     
     # Get all image directories
     image_dirs = get_image_directories(pixelated_dir)
     print(f"Found {len(image_dirs)} images to process")
     
-    # Load existing results if resuming
-    completed_images = set()
-    if resume and os.path.exists(output_csv):
-        with open(output_csv, 'r') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                completed_images.add(int(row['image_idx']))
-        print(f"Resuming: {len(completed_images)} images already completed")
+    if resume and completed_images:
+        print(f"Skipping {len(completed_images)} already completed images.")
     
     # Determine starting point
     start_idx = 0
@@ -120,32 +241,26 @@ def run_experiment(pixelated_dir='pixelated_mnist', user_name=None,
             current_level_idx = 0
             guessed = False
             
+            total_levels = len(pixelation_files)
+            
             while current_level_idx < len(pixelation_files):
                 pixelation_level, image_path = pixelation_files[current_level_idx]
                 
-                # Display image (don't show true class to user)
-                display_image(image_path, pixelation_level, img_idx)
+                # Calculate level number (1 = most pixelated, total_levels = least pixelated)
+                level_num = current_level_idx + 1
                 
-                # Get user input
-                if current_level_idx < len(pixelation_files) - 1:
-                    next_level = pixelation_files[current_level_idx + 1][0]
-                    print(f"Options:")
-                    print(f"  [0-9] - Guess the digit")
-                    print(f"  [n]   - Next level (go to {next_level})")
-                    print(f"  [q]   - Quit experiment")
-                else:
-                    print(f"Options:")
-                    print(f"  [0-9] - Guess the digit (this is the lowest pixelation level)")
-                    print(f"  [q]   - Quit experiment")
+                # Check if there's a next level
+                has_next = current_level_idx < len(pixelation_files) - 1
                 
-                user_input = input("\nYour choice: ").strip().lower()
+                # Show GUI and get user input
+                action, guess = show_image_gui(image_path, img_idx, level_num, total_levels, has_next)
                 
-                if user_input == 'q':
+                if action == 'quit':
                     print("\nExperiment stopped by user.")
                     return
                 
-                elif user_input == 'n':
-                    if current_level_idx < len(pixelation_files) - 1:
+                elif action == 'next':
+                    if has_next:
                         # Record that user went to next level
                         writer.writerow({
                             'image_idx': img_idx,
@@ -160,8 +275,7 @@ def run_experiment(pixelated_dir='pixelated_mnist', user_name=None,
                     else:
                         print("Already at the lowest pixelation level!")
                 
-                elif user_input.isdigit() and 0 <= int(user_input) <= 9:
-                    guess = int(user_input)
+                elif action == 'guess':
                     correct = (guess == class_label)
                     
                     # Record the guess
@@ -175,18 +289,14 @@ def run_experiment(pixelated_dir='pixelated_mnist', user_name=None,
                     })
                     csvfile.flush()
                     
-                    # Show result
+                    # Show result in a message box
                     if correct:
-                        print(f"\n✓ Correct! The digit is {class_label}")
+                        messagebox.showinfo("Result", f"✓ Correct! The digit is {class_label}")
                     else:
-                        print(f"\n✗ Incorrect. You guessed {guess}, but the digit is {class_label}")
+                        messagebox.showinfo("Result", f"✗ Incorrect. You guessed {guess}, but the digit is {class_label}")
                     
                     guessed = True
                     break
-                
-                else:
-                    print("Invalid input. Please enter a digit (0-9), 'n' for next level, or 'q' to quit.")
-                    continue
             
             # If user went through all levels without guessing, record that
             if not guessed:

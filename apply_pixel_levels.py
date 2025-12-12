@@ -85,11 +85,12 @@ def apply_pixelation_to_mnist(num_images=200, pixelate_levels=[1.5, 2.4, 3.2, 4.
 
 if __name__ == "__main__":
     # Apply pixelation with specified levels
-    pixelate_levels = [1.5, 2.4, 3.2, 4.0, 4.9, 5.8, 7.0, 10]
+    # More granular at lower pixelation (where users can actually guess)
+    # to capture more data points in the range where recognition happens
+    pixelate_levels = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.3, 2.6, 3.0, 3.5, 4.2, 5.0, 6.5]
     apply_pixelation_to_mnist(
         num_images=200,
         pixelate_levels=pixelate_levels,
         output_dir='pixelated_mnist',
         use_train=True
     )
-
