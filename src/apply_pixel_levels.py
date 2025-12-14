@@ -10,6 +10,7 @@ import torch.nn as nn
 import os
 from PIL import Image
 import numpy as np
+import re
 
 class Pixelate(nn.Module):
     def __init__(self, downscale_factor=4.0):
@@ -33,8 +34,28 @@ class Pixelate(nn.Module):
         return img_big.squeeze(0)
 
 
+def get_last_image_index(output_dir):
+    """
+    Find the highest index of existing image directories.
+    Returns -1 if no images exist, otherwise returns the highest index found.
+    """
+    if not os.path.exists(output_dir):
+        return -1
+    
+    max_index = -1
+    pattern = re.compile(r'image_(\d+)_class_\d+')
+    
+    for item in os.listdir(output_dir):
+        match = pattern.match(item)
+        if match:
+            index = int(match.group(1))
+            max_index = max(max_index, index)
+    
+    return max_index
+
+
 def apply_pixelation_to_mnist(num_images=200, pixelate_levels=[1.5, 2.4, 3.2, 4.0, 4.9, 5.8, 7.0, 10], 
-                              output_dir='pixelated_mnist', use_train=True):
+                              output_dir='pixelated_mnist', use_train=True, resume=True):
 
     # Load MNIST data
     print("Loading MNIST data...")
@@ -49,20 +70,29 @@ def apply_pixelation_to_mnist(num_images=200, pixelate_levels=[1.5, 2.4, 3.2, 4.
         labels = test_labels
         dataset_name = "test"
     
+    # Check for existing images and determine starting index
+    start_index = 0
+    if resume:
+        last_index = get_last_image_index(output_dir)
+        if last_index >= 0:
+            start_index = last_index + 1
+            print(f"Found existing images up to index {last_index}. Resuming from index {start_index}...")
+    
     # Select subset of images
     num_images = min(num_images, len(images))
     selected_indices = torch.randperm(len(images))[:num_images]
     selected_images = images[selected_indices]
     selected_labels = labels[selected_indices]
     
-    print(f"Processing {num_images} images from {dataset_name} set...")
+    print(f"Processing {num_images} images from {dataset_name} set (starting at index {start_index})...")
     
     os.makedirs(output_dir, exist_ok=True)
     
     pixelate = Pixelate()
     
-    for idx, (img, label) in enumerate(zip(selected_images, selected_labels)):
-        img_dir = os.path.join(output_dir, f"image_{idx:03d}_class_{label.item()}")
+    for local_idx, (img, label) in enumerate(zip(selected_images, selected_labels)):
+        global_idx = start_index + local_idx
+        img_dir = os.path.join(output_dir, f"image_{global_idx:03d}_class_{label.item()}")
         os.makedirs(img_dir, exist_ok=True)
         
         img_with_channel = img.unsqueeze(0) 
@@ -82,10 +112,10 @@ def apply_pixelation_to_mnist(num_images=200, pixelate_levels=[1.5, 2.4, 3.2, 4.
             filepath = os.path.join(img_dir, filename)
             pil_img.save(filepath)
         
-        if (idx + 1) % 20 == 0:
-            print(f"Processed {idx + 1}/{num_images} images...")
+        if (local_idx + 1) % 20 == 0:
+            print(f"Processed {local_idx + 1}/{num_images} images (current index: {global_idx})...")
     
-    print("done")
+    print(f"Done! Generated {num_images} images starting from index {start_index}.")
 
 
 if __name__ == "__main__":
@@ -97,5 +127,6 @@ if __name__ == "__main__":
         num_images=200,
         pixelate_levels=pixelate_levels,
         output_dir='pixelated_mnist',
-        use_train=True
+        use_train=True,
+        resume=True
     )
