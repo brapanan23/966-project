@@ -124,7 +124,7 @@ if __name__ == "__main__":
     # to capture more data points in the range where recognition happens
     pixelate_levels = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.3, 2.6, 3.0, 3.5, 4.2, 5.0, 6.5]
     apply_pixelation_to_mnist(
-        num_images=200,
+        num_images=1000,
         pixelate_levels=pixelate_levels,
         output_dir='pixelated_mnist',
         use_train=True,
